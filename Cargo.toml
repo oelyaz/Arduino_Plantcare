@@ -1,0 +1,9 @@
+[package]
+name = "arduino_plantcare"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cortex-m-rt = "0.7.5"
+panic-halt = "1.0.0"
+ra4m1 = "0.2.0"

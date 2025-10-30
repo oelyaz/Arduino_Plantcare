@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "probe-rs-debug",
+      "request": "attach",
+      "name": "probe_rs debug",
+      "cwd": "${workspaceFolder}",
+      //!MODIFY (or remove)
+      "speed": 115200,
+      //!MODIFY
+      "chip": "R7FA4M1AB",
+      //!MODIFY (or remove)
+      "probe": "2341:1002:F412FA9FCD08",
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          //!MODIFY
+          "programBinary": "./target/thumbv7em-none-eabihf/debug/arduino_plantcare",
+          //!MODIFY
+          "svdFile": "./R7FA4M1AB.svd"
+        }
+      ],
+      "env": {
+        //!MODIFY (or remove)
+        // If you set this variable, check the VSCode console log window for the location of the log file.
+        "RUST_LOG": "info"
+      },
+      // Info, Debug
+      "consoleLogLevel": "Console"
+    }
+  ]
+}
