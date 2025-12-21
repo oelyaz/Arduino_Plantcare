@@ -16,10 +16,40 @@ fn main() -> ! {
     let adc = peripherals.ADC140;
     // set reference voltage
     adc.adhvrefcnt.write( |w| {w.hvsel()._00()
-                                        .lvsel()._1()} );
+        .lvsel()._1()}
+    );
     // port 0 pin 14 is AN009 and A0
     // activate AD conversion for AN009
     adc.adansa0.write( |w| {w.ansa09().bit(true)} );
+
+    // disable PFS write protection in PWPR
+    peripherals.PMISC.pwpr.write(|w| {w
+        .b0wi().bit(false)
+        .pfswe().bit(false)
+    });
+
+    // set pin function in PFS to SCI TX, output and peripheral
+    peripherals.PFS.p109pfs().write(|w| unsafe {w
+        .psel().bits(0b00101)
+        .pdr().bit(true)
+        .pmr().bit(true)
+    });
+
+    // disable MSTP write protection in PRCR
+    peripherals.SYSTEM.prcr.write(|w| unsafe {w
+        .prkey().bits(0xA5)
+        .prc0().bit(true)
+    });
+
+    // activate SCI9 module in MSTP
+    module_stop.mstpcrb.write(|w| { w.mstpb29().bit(false)});
+
+    // SCI9 config
+    // configure uart in SMR, SCR
+
+
+    // write to TDR after transmit data empty interrupt (SCIn_TXI)
+    // TSR will automatically be filled if empty
 
     // read sensor data
     loop {
@@ -198,3 +228,4 @@ fn smile_down(port0: &ra4m1::PORT0, port2: &ra4m1::PORT2) {
         port0.pdr().write( |w| unsafe { w.bits(0) });
     }
 }
+

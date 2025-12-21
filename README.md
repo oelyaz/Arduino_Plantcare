@@ -8,3 +8,7 @@ Build and flash:
 Debug:
 - build and flash without --release flag
 - launch vscode probe-rs debugger with config from .vscode/
+
+Serial:
+- ![img.png](documentation/pin-functions.png)
+- ![serial-flow.png](documentation/serial-flow.png) pg. 751
