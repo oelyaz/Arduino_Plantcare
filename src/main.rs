@@ -22,6 +22,7 @@ fn main() -> ! {
     // activate AD conversion for AN009
     adc.adansa0.write( |w| {w.ansa09().bit(true)} );
 
+    // SCI9 UART ===================================================================================
     // disable PFS write protection in PWPR
     peripherals.PMISC.pwpr.write(|w| {w
         .b0wi().bit(false)
@@ -45,8 +46,23 @@ fn main() -> ! {
     module_stop.mstpcrb.write(|w| { w.mstpb29().bit(false)});
 
     // SCI9 config
-    // configure uart in SMR, SCR
+    // configure uart in SMR
+    peripherals.SCI9.smr().write(|w| {w
+        .cks()._00()
+        .stop()._0()
+        .pe()._0()
+        .cm()._0()
+    });
 
+    // set bitrate in BRR N=129, n=0 40mhz 9600bps
+    peripherals.SCI9.brr.write(|w| unsafe {w.bits(129)});
+
+    // SCR
+    peripherals.SCI9.scr().write(|w| {w
+        .cke()._01()
+        .te().bit(true)
+        .tie().bit(true)
+    });
 
     // write to TDR after transmit data empty interrupt (SCIn_TXI)
     // TSR will automatically be filled if empty
