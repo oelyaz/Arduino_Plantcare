@@ -4,50 +4,113 @@
 use panic_halt as _;
 use cortex_m_rt::entry;
 
+enum SmileyMoods {
+    Happy,
+    Sad
+}
+
 #[entry]
 fn main() -> ! {
     let peripherals = unsafe { ra4m1::Peripherals::steal() };
 
+    initialize(&peripherals);
+
+    let rtc_sec = peripherals.RTC.bcnt0();
+    let adc = peripherals.ADC140;
+
+    let mut smiley_mood: SmileyMoods = SmileyMoods::Happy;
+    let mut sec_since_read: u8 = rtc_sec.read().bits();
+    loop {
+        let passed_time: u8 = rtc_sec.read().bits().wrapping_sub(sec_since_read);
+        if passed_time > 30 {
+            // open adc control register and start conversion
+            adc.adcsr.write(|w| { w.adst().set_bit() });
+            while adc.adcsr.read().adst().bit_is_set() {}
+
+            let value: u16 = adc.addr[9].read().bits();
+
+            // send data to esp32
+            let datapoint:u8 = ((value - 800)/10) as u8;
+            // check if TDR is empty
+            while peripherals.SCI9.ssr().read().tdre().is_0() {}
+            peripherals.SCI9.tdr.write(|w| unsafe {w.bits(datapoint)});
+
+            // set smiley
+            if value < 1100 {
+                smiley_mood = SmileyMoods::Sad;
+            } else {
+                smiley_mood = SmileyMoods::Sad;
+            }
+            sec_since_read = rtc_sec.read().bits();
+        }
+        match smiley_mood {
+            SmileyMoods::Happy => smile_up(&peripherals.PORT0, &peripherals.PORT2),
+            SmileyMoods::Sad => smile_down(&peripherals.PORT0, &peripherals.PORT2)
+        }
+    }
+}
+
+fn initialize(periph: &ra4m1::Peripherals) {
     // 14 bit analog digital converter =============================================================
-    let module_stop = peripherals.MSTP;
+    let module_stop = &periph.MSTP;
     // activate adc
     module_stop.mstpcrd.write( |w| {w.mstpd16().bit(false)} );
 
-    let adc = peripherals.ADC140;
+    let adc = &periph.ADC140;
     // set reference voltage
-    adc.adhvrefcnt.write( |w| {w.hvsel()._00()
-        .lvsel()._1()}
-    );
+    adc.adhvrefcnt.write( |w| {w
+        .hvsel()._00()
+        .lvsel()._1()
+    });
     // port 0 pin 14 is AN009 and A0
     // activate AD conversion for AN009
     adc.adansa0.write( |w| {w.ansa09().bit(true)} );
 
+    // real time clock =============================================================================
+    // disable RTC write protection
+    periph.SYSTEM.prcr.write( |w| unsafe {w
+        .prkey().bits(0xA5)
+        .prc1().bit(true)
+    });
+
+    // start sub-clock oscillator
+    periph.SYSTEM.sosccr.write( |w| {w.sostp()._0()} );
+
+    // clock selector RTC RCR4 (sub-clock oscillator)
+    periph.RTC.rcr4.write( |w| {w.rcksel()._0()} );
+
+    // enable RTC write protection
+    periph.SYSTEM.prcr.write( |w| unsafe {w
+        .prkey().bits(0xA5)
+        .prc1().bit(false)
+    });
+
     // SCI9 UART ===================================================================================
     // disable PFS write protection in PWPR
-    peripherals.PMISC.pwpr.write(|w| {w
+    periph.PMISC.pwpr.write( |w| {w
         .b0wi().bit(false)
         .pfswe().bit(false)
     });
 
     // set pin function in PFS to SCI TX, output and peripheral
-    peripherals.PFS.p109pfs().write(|w| unsafe {w
+    periph.PFS.p109pfs().write( |w| unsafe {w
         .psel().bits(0b00101)
         .pdr().bit(true)
         .pmr().bit(true)
     });
 
     // disable MSTP write protection in PRCR
-    peripherals.SYSTEM.prcr.write(|w| unsafe {w
+    periph.SYSTEM.prcr.write( |w| unsafe {w
         .prkey().bits(0xA5)
         .prc0().bit(true)
     });
 
     // activate SCI9 module in MSTP
-    module_stop.mstpcrb.write(|w| { w.mstpb29().bit(false)});
+    module_stop.mstpcrb.write( |w| { w.mstpb29().bit(false)} );
 
     // SCI9 config
     // configure uart in SMR
-    peripherals.SCI9.smr().write(|w| {w
+    periph.SCI9.smr().write( |w| {w
         .cks()._00()
         .stop()._0()
         .pe()._0()
@@ -55,31 +118,20 @@ fn main() -> ! {
     });
 
     // set bitrate in BRR N=129, n=0 40mhz 9600bps
-    peripherals.SCI9.brr.write(|w| unsafe {w.bits(129)});
+    periph.SCI9.brr.write( |w| unsafe {w.bits(129)} );
 
     // SCR
-    peripherals.SCI9.scr().write(|w| {w
+    periph.SCI9.scr().write( |w| {w
         .cke()._01()
         .te().bit(true)
         .tie().bit(true)
     });
 
-    // write to TDR after transmit data empty interrupt (SCIn_TXI)
-    // TSR will automatically be filled if empty
-
-    // read sensor data
-    loop {
-        // open adc control register and start conversion
-        adc.adcsr.write( |w| {w.adst().set_bit()} );
-        while adc.adcsr.read().adst().bit_is_set() {}
-
-        let value = adc.addr[9].read().bits();
-        if value < 1100 {
-            smile_down(&peripherals.PORT0, &peripherals.PORT2)
-        } else {
-            smile_up(&peripherals.PORT0, &peripherals.PORT2)
-        }
-    }
+    // enable MSTP write protection in PRCR
+    periph.SYSTEM.prcr.write( |w| unsafe {w
+        .prkey().bits(0xA5)
+        .prc0().bit(false)
+    });
 }
 
 fn smile_up(port0: &ra4m1::PORT0, port2: &ra4m1::PORT2) {
