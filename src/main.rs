@@ -15,13 +15,20 @@ fn main() -> ! {
 
     initialize(&peripherals);
 
-    let rtc_sec = peripherals.RTC.bcnt0();
+    let rtc_sec = peripherals.RTC.rseccnt();
     let adc = peripherals.ADC140;
 
-    let mut smiley_mood: SmileyMoods = SmileyMoods::Happy;
+    let mut smiley_mood: SmileyMoods = SmileyMoods::Sad;
     let mut sec_since_read: u8 = rtc_sec.read().bits();
     loop {
-        let passed_time: u8 = rtc_sec.read().bits().wrapping_sub(sec_since_read);
+        let current_sec = rtc_sec.read().bits();
+        // wrap handler
+        let passed_time = if current_sec >= sec_since_read {
+            current_sec - sec_since_read
+        } else {
+            (60 + current_sec) - sec_since_read
+        };
+
         if passed_time > 30 {
             // open adc control register and start conversion
             adc.adcsr.write(|w| { w.adst().set_bit() });
@@ -30,7 +37,7 @@ fn main() -> ! {
             let value: u16 = adc.addr[9].read().bits();
 
             // send data to esp32
-            let datapoint:u8 = ((value - 800)/10) as u8;
+            let datapoint:u8 = ((value.saturating_sub(800))/10) as u8;
             // check if TDR is empty
             while peripherals.SCI9.ssr().read().tdre().is_0() {}
             peripherals.SCI9.tdr.write(|w| unsafe {w.bits(datapoint)});
@@ -39,7 +46,7 @@ fn main() -> ! {
             if value < 1100 {
                 smiley_mood = SmileyMoods::Sad;
             } else {
-                smiley_mood = SmileyMoods::Sad;
+                smiley_mood = SmileyMoods::Happy;
             }
             sec_since_read = rtc_sec.read().bits();
         }
@@ -89,7 +96,7 @@ fn initialize(periph: &ra4m1::Peripherals) {
     // disable PFS write protection in PWPR
     periph.PMISC.pwpr.write( |w| {w
         .b0wi().bit(false)
-        .pfswe().bit(false)
+        .pfswe().bit(true)
     });
 
     // set pin function in PFS to SCI TX, output and peripheral
@@ -97,6 +104,12 @@ fn initialize(periph: &ra4m1::Peripherals) {
         .psel().bits(0b00101)
         .pdr().bit(true)
         .pmr().bit(true)
+    });
+
+    // enable PFS write protection in PWPR
+    periph.PMISC.pwpr.write( |w| {w
+        .b0wi().bit(false)
+        .pfswe().bit(false)
     });
 
     // disable MSTP write protection in PRCR
@@ -109,6 +122,12 @@ fn initialize(periph: &ra4m1::Peripherals) {
     module_stop.mstpcrb.write( |w| { w.mstpb29().bit(false)} );
 
     // SCI9 config
+    // disable RE/TE for setup
+    periph.SCI9.scr().write(|w| {w
+        .te().bit(false)
+        .re().bit(false)
+    });
+
     // configure uart in SMR
     periph.SCI9.smr().write( |w| {w
         .cks()._00()
@@ -122,9 +141,9 @@ fn initialize(periph: &ra4m1::Peripherals) {
 
     // SCR
     periph.SCI9.scr().write( |w| {w
-        .cke()._01()
+        .cke()._00()
         .te().bit(true)
-        .tie().bit(true)
+        .tie().bit(false)
     });
 
     // enable MSTP write protection in PRCR
